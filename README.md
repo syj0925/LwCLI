@@ -25,15 +25,19 @@ LwCLI的主要功能：
 编译和运行环境：ubuntu 16
 
 ### 编译
-cd /demo/linux
-make
+* cd /demo/linux
+* make
 
 ### 运行
-./build/lwcli_demo
+* ./build/lwcli_demo
 
 ### 登录
-Login: admin
-Password: admin
+在终端界面输入用户名和密码
+
+* Login: admin
+* Password: admin
+
+登录成功后，就可以输入命令，如：help等
 
 ## API接口介绍
 * CliShellInit：初始化lwcli，调用这需要指定最大支持的命令数，还需要指定输出接口(可以是printf，也可以是其它函数)
@@ -43,5 +47,10 @@ Password: admin
 * CliShellTick：需要周期调用，用于命令行的解析和处理
 
 
+## 移植应用
+* 拷贝lwcli文件夹到自己的工程源文件目录下
+* IDE或者makefile文件中添加cli_line.c cli_cmd.c cli_shell.c三个源文件，添加lwcli头文件文件路径
+* 调用CliShellInit进行初始化
+* 调用CliShellInputChar/CliShellInputBlock来接收键盘等输入设备数据
 
-
+p.s. 具体可以参考demo
