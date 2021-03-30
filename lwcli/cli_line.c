@@ -84,7 +84,8 @@ struct cli_line {
     uint8_t     key_combo;               /* 组合键标记 */
     uint8_t     history_index;           /* 历史命令查询索引 */
     uint8_t     history_count;           /* 历史命令数 */
-    uint8_t     cmdline_len;             /* 已存命令行长度 */
+    uint8_t     line_cursor;             /* 光标位置 */
+    uint8_t     line_position;           /* 行写入位置 */
     char        history[LINE_HISTORY_MAX][LINE_LEN_MAX];
     char        cmdline[LINE_LEN_MAX];   /* 存放命令行 */
     line_printf printf_cb;               /* 字符输出回调函数 */
@@ -160,16 +161,9 @@ static int32_t queuePushBlock(queue_t *queue, uint8_t *pdata, uint32_t datalen)
 	return i;
 }
 
-static void keyComboHandle(cli_line_t *line, uint8_t readbyte)
+static void keyUpDownHandle(cli_line_t *line, uint8_t readbyte)
 {
-    /* exit combo */
-    line->key_combo = 0;
-
-    if ((line->echo_opt == ECHO_DISABLE) || (line->history_count <= 0)) {
-        return;
-    }
-    
-    if (readbyte != 'A' && readbyte != 'B') {
+    if (line->history_count <= 0) {
         return;
     }
 
@@ -187,15 +181,35 @@ static void keyComboHandle(cli_line_t *line, uint8_t readbyte)
         }
     }
     
-    while (line->cmdline_len > 0) {
+    while (line->line_position > 0) {
         line->printf_cb(STR_BACKSPACE);
-        line->cmdline_len--;
+        line->line_position--;
     }
-
+    line->line_cursor = 0;
     line->printf_cb("%s", line->history[line->history_index]);
     
     strncpy(line->cmdline, line->history[line->history_index], LINE_LEN_MAX);
-    line->cmdline_len = strlen(line->cmdline);
+    line->line_position = strlen(line->cmdline);
+    line->line_cursor = line->line_position;
+}
+
+static void keyRightLeftHandle(cli_line_t *line, uint8_t readbyte)
+{
+    if (readbyte == 'C') {
+        if (line->line_cursor < line->line_position) {
+            if (line->echo_opt == ECHO_ENABLE) {
+                line->printf_cb("%c", line->cmdline[line->line_cursor]);
+            }
+            line->line_cursor++;
+        }
+    } else if (readbyte == 'D') {
+        if (line->line_cursor) {
+            if (line->echo_opt == ECHO_ENABLE) {
+                line->printf_cb("\b");
+            }
+            line->line_cursor--;
+        }
+    }
 }
 
 static int32_t checkHistory(cli_line_t *line)
@@ -214,7 +228,7 @@ static void keyEnterHandle(cli_line_t *line, uint8_t readbyte)
     line->printf_cb(STR_ENTER);
 
     /* save command */
-    if ((line->echo_opt == ECHO_ENABLE) && (line->cmdline_len > 0)) {
+    if ((line->echo_opt == ECHO_ENABLE) && (line->line_position > 0)) {
         int32_t i;
         
         if ((i = checkHistory(line)) >= 0) {
@@ -233,20 +247,69 @@ static void keyEnterHandle(cli_line_t *line, uint8_t readbyte)
     line->handle_cb(line->ctx, line->cmdline);
 
     memset(line->cmdline,'\0', sizeof(line->cmdline));
-    line->cmdline_len = 0;
+    line->line_position = 0;
+    line->line_cursor = 0;
     line->printf_cb("%s", line->prompt);
 }
 
 static void keyBackspaceHandle(cli_line_t *line, uint8_t readbyte)
 {
-    if (line->cmdline_len > 0) {
-        line->cmdline_len--;
-        line->cmdline[line->cmdline_len] = '\0';
+    if (line->line_cursor > 0) {
+        
+        line->line_cursor--;
+        line->line_position--;
 
-        if (line->echo_opt == ECHO_ENABLE) {
-            line->printf_cb(STR_BACKSPACE);
+        if (line->line_position > line->line_cursor) {
+
+            memmove(&line->cmdline[line->line_cursor],
+                    &line->cmdline[line->line_cursor + 1],
+                    line->line_position - line->line_cursor);
+            line->cmdline[line->line_position] = '\0';
+
+            if (line->echo_opt == ECHO_ENABLE) {
+                line->printf_cb("\b%s  \b", &line->cmdline[line->line_cursor]);
+                /* Move the cursor to the origin position */
+                for (int32_t i = line->line_cursor; i <= line->line_position; i++) {
+                    line->printf_cb("\b");
+                }
+            }
+        } else {
+            if (line->echo_opt == ECHO_ENABLE) {
+                line->printf_cb(STR_BACKSPACE);
+            }
+            line->cmdline[line->line_position] = '\0';
         }
     }
+}
+
+static void keyNormalCharacterHandle(cli_line_t *line, uint8_t readbyte)
+{
+        if (line->line_cursor < line->line_position) {
+
+            memmove(&line->cmdline[line->line_cursor + 1],
+                    &line->cmdline[line->line_cursor],
+                    line->line_position - line->line_cursor);
+
+            line->cmdline[line->line_cursor] = readbyte;
+
+            if (line->echo_opt == ECHO_ENABLE) {
+                line->printf_cb("%s", &line->cmdline[line->line_cursor]);
+                /* Move the cursor to new position */
+                for (int32_t i = line->line_cursor; i < line->line_position; i++) {
+                    line->printf_cb("\b");
+                }
+            }
+
+        } else {
+            if (line->echo_opt == ECHO_ENABLE) {
+                line->printf_cb("%c", readbyte);
+            }
+        
+            line->cmdline[line->line_position] = readbyte;
+        }
+
+        line->line_position++;
+        line->line_cursor++;
 }
 
 static void lineParse(cli_line_t *line, uint8_t readbyte)
@@ -267,14 +330,23 @@ static void lineParse(cli_line_t *line, uint8_t readbyte)
         }
     }
     else if (line->key_combo == KEY_LBRKT) {
-        keyComboHandle(line, readbyte);
+        /* exit combo */
+        line->key_combo = 0;
+
+        /* up key down key */
+        if (readbyte == 'A' || readbyte == 'B') {
+            if (line->echo_opt == ECHO_DISABLE) {
+                return;
+            }
+            keyUpDownHandle(line, readbyte);
+        }
+        /* right key left key */
+        else if (readbyte == 'C' || readbyte == 'D') {
+            keyRightLeftHandle(line, readbyte);
+        }
     }
-    else if (readbyte == KEY_ENTER) {
-        line->key_enter = KEY_ENTER;
-        keyEnterHandle(line, readbyte);
-    }
-    else if (readbyte == KEY_NEWLINE) {
-        line->key_enter = KEY_NEWLINE;
+    else if (readbyte == KEY_ENTER || readbyte == KEY_NEWLINE) {
+        line->key_enter = readbyte;
         keyEnterHandle(line, readbyte);
     }
     else if (readbyte == KEY_BACKSPACE || readbyte == CTRL_H) {
@@ -284,16 +356,10 @@ static void lineParse(cli_line_t *line, uint8_t readbyte)
         /* cache input characters */
         line->key_enter = 0;
         
-        if (line->cmdline_len < (LINE_LEN_MAX - 1)) {
-            
-            if (line->echo_opt == ECHO_ENABLE) {
-                line->printf_cb("%c", readbyte);
-            }
-            
-            line->cmdline[line->cmdline_len] = readbyte;
-            line->cmdline_len++;
-        }  else if (line->cmdline_len == (LINE_LEN_MAX - 1)) {
-            line->cmdline[line->cmdline_len] = '\0';
+        if (line->line_position < (LINE_LEN_MAX - 1)) {
+            keyNormalCharacterHandle(line, readbyte);
+        }  else if (line->line_position == (LINE_LEN_MAX - 1)) {
+            line->cmdline[line->line_position] = '\0';
             line->printf_cb("%s", STR_ENTER"Size limit exceeded!");
         }
     }
