@@ -19,7 +19,7 @@
  * macros                                       *
  *----------------------------------------------*/
 
-    
+
 /*----------------------------------------------*
  * external variables                           *
  *----------------------------------------------*/
@@ -58,7 +58,7 @@ static int32_t cmdParse(char *buf, char **argv)
 {
     int32_t argc = 0;
 
-    memset(argv, 0, sizeof(argv)*CMD_ARGC_MAX);
+    memset(argv, 0, sizeof(*argv)*CMD_ARGC_MAX);
     while ((argc < CMD_ARGC_MAX) && (*buf != '\0')) {
         argv[argc] = buf;
         argc++;
@@ -96,7 +96,7 @@ cli_command_t *CliCmdCreate(int32_t cmd_max, command_printf printf)
     if (cli_cmd == NULL) {
         return NULL;
     }
-    
+
     memset(cli_cmd, 0, sizeof(cli_command_t));
     cli_cmd->cmd_max   = cmd_max;
     cli_cmd->printf_cb = printf;
@@ -109,20 +109,20 @@ void CliCmdDestroy(cli_command_t *cli_cmd)
     free(cli_cmd);
 }
 
-int32_t CliCmdRegister(cli_command_t *cli_cmd, 
-                             char *cmd, 
-                             void (*function)(int, char **), 
+int32_t CliCmdRegister(cli_command_t *cli_cmd,
+                             char *cmd,
+                             void (*function)(int, char **),
                              char *describe)
 {
     if (cli_cmd == NULL || cli_cmd->cmd_num >= cli_cmd->cmd_max) {
         return -1;
     }
-    
+
     cli_cmd->cmd_table[cli_cmd->cmd_num].command = cmd;
     cli_cmd->cmd_table[cli_cmd->cmd_num].function = function;
     cli_cmd->cmd_table[cli_cmd->cmd_num].describe = describe;
     cli_cmd->cmd_num++;
-    
+
     return 0;
 }
 
@@ -135,7 +135,7 @@ void CliCmdHandle(cli_command_t *cli_cmd, char *cmdline)
     if (cli_cmd == NULL) {
         return;
     }
-    
+
     if ((argc = cmdParse(cmdline, argv)) > 0) {
 
         if (strcmp(argv[0], "help") == 0 ||
@@ -143,9 +143,9 @@ void CliCmdHandle(cli_command_t *cli_cmd, char *cmdline)
             dumpHelpInfo(cli_cmd);
             return;
         }
-    
+
         for (i = 0; i < cli_cmd->cmd_num; i++) {
-       
+
             if (strcmp(argv[0], cli_cmd->cmd_table[i].command) == 0) {
                 cli_cmd->cmd_table[i].function(argc, argv);
                 return;

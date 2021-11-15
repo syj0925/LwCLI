@@ -25,19 +25,21 @@ extern "C"{
 #include <stdlib.h>
 
 #define LOGIN_ENABLE    1
+#if LOGIN_ENABLE > 0
 #define PROMPT_LOGIN    "Login:"
 #define PROMPT_PASSWD   "Password:"
-#define PROMPT_CMD      "hello>"
-
 #define CLI_USERNAME    "admin"
 #define CLI_PASSWORD    "admin"
+#endif
+#define PROMPT_CMD      "hello> "
+
 
 typedef int32_t (*shell_printf)(const char *format, ...);
 
 void CliShellInit(int32_t cmd_max, shell_printf printf);
 
-int32_t CliShellRegister(char *cmd, 
-                             void (*function)(int, char **), 
+int32_t CliShellRegister(char *cmd,
+                             void (*function)(int, char **),
                              char *describe);
 void CliShellTick(void);
 

@@ -40,9 +40,9 @@ cli_command_t *CliCmdCreate(int32_t cmd_max, command_printf printf);
 
 void CliCmdDestroy(cli_command_t *cli_cmd);
 
-int32_t CliCmdRegister(cli_command_t *cli_cmd, 
-                             char *cmd, 
-                             void (*function)(int, char **), 
+int32_t CliCmdRegister(cli_command_t *cli_cmd,
+                             char *cmd,
+                             void (*function)(int, char **),
                              char *describe);
 
 void CliCmdHandle(cli_command_t *cli_cmd, char *cmdline);

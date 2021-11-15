@@ -35,7 +35,7 @@ typedef struct cli_shell {
     cli_line_t    *obj_line;
     cli_command_t *obj_cmd;
     shell_printf   printf_cb;
-    
+
 #if LOGIN_ENABLE > 0
     login_status_t login;
     const char *username;
@@ -67,7 +67,7 @@ static void cmdHandle(void *ctx, char *line)
             break;
 
         case LOGIN_PASSWORD:
-            if (!strcmp(sg_shell.temp_user, sg_shell.username) && 
+            if (!strcmp(sg_shell.temp_user, sg_shell.username) &&
                 !strcmp(line, sg_shell.password)) {
                 sg_shell.login = LOGIN_SUCCESS;
                 CliLineSetPrompt(sg_shell.obj_line, PROMPT_CMD);
@@ -91,16 +91,20 @@ static void cmdHandle(void *ctx, char *line)
             break;
     }
 #else
-    CliCmdHandle(sg_shell.obj_cmd, line);
+    if (strlen(line) > 0) {
+        CliCmdHandle(sg_shell.obj_cmd, line);
+    }
 #endif
 }
 
+#if LOGIN_ENABLE > 0
 static void cmdLogout(int argc, char **argv)
 {
     sg_shell.printf_cb("Logout\r\n");
     sg_shell.login = LOGIN_USERNAME;
     CliLineSetPrompt(sg_shell.obj_line, PROMPT_LOGIN);
 }
+#endif
 
 void CliShellInit(int32_t cmd_max, shell_printf printf)
 {
@@ -111,7 +115,7 @@ void CliShellInit(int32_t cmd_max, shell_printf printf)
     XASSERT(sg_shell.obj_cmd != NULL && sg_shell.obj_line != NULL);
 
     sg_shell.printf_cb = printf;
-    
+
 #if LOGIN_ENABLE > 0
     sg_shell.username = CLI_USERNAME;
     sg_shell.password = CLI_PASSWORD;
@@ -125,8 +129,8 @@ void CliShellInit(int32_t cmd_max, shell_printf printf)
 #endif
 }
 
-int32_t CliShellRegister(char *cmd, 
-                             void (*function)(int, char **), 
+int32_t CliShellRegister(char *cmd,
+                             void (*function)(int, char **),
                              char *describe)
 {
     return CliCmdRegister(sg_shell.obj_cmd, cmd, function, describe);
