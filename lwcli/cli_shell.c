@@ -14,7 +14,7 @@
  */
 
 #include "cli_line.h"
-#include "cli_command.h"
+#include "cli_cmd.h"
 #include "cli_shell.h"
 
 /*----------------------------------------------*
@@ -32,15 +32,15 @@ typedef enum  login_status {
 } login_status_t;
 
 typedef struct cli_shell {
-    cli_line_t    *obj_line;
-    cli_command_t *obj_cmd;
-    shell_printf   printf_cb;
+    cli_line_t  *obj_line;
+    cli_cmd_t   *obj_cmd;
+    shell_printf printf_cb;
 
 #if LOGIN_ENABLE > 0
     login_status_t login;
     const char *username;
     const char *password;
-    char        temp_user[LINE_LEN_MAX];
+    char        temp_user[128];
 #endif
 } cli_shell_t;
 
@@ -110,8 +110,22 @@ void CliShellInit(int32_t cmd_max, shell_printf printf)
 {
     memset(&sg_shell, 0, sizeof(sg_shell));
 
-    sg_shell.obj_cmd = CliCmdCreate(cmd_max, printf);
-    sg_shell.obj_line = CliLineCreate(NULL, printf, cmdHandle, sg_shell.obj_cmd);
+    static cli_inf_t inf = {
+        .malloc_cb = malloc,
+        .free_cb = free,
+    };
+    inf.printf_cb = printf;
+
+    static cli_line_cfg_t cfg = {
+        .queue_size = 128,
+        .line_buf_size = 256,
+        .history_max = 10,
+        .handle_cb = cmdHandle,
+    };
+    cfg.ctx = sg_shell.obj_cmd;
+
+    sg_shell.obj_line = CliLineCreate(&inf, &cfg);
+    sg_shell.obj_cmd = CliCmdCreate(&inf, cmd_max);
     XASSERT(sg_shell.obj_cmd != NULL && sg_shell.obj_line != NULL);
 
     sg_shell.printf_cb = printf;
@@ -130,8 +144,8 @@ void CliShellInit(int32_t cmd_max, shell_printf printf)
 }
 
 int32_t CliShellRegister(char *cmd,
-                             void (*function)(int, char **),
-                             char *describe)
+                         void (*function)(int, char **),
+                         char *describe)
 {
     return CliCmdRegister(sg_shell.obj_cmd, cmd, function, describe);
 }

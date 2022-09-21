@@ -20,15 +20,9 @@
 extern "C"{
 #endif  // __cplusplus
 
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
+#include "cli_def.h"
 
 /* parameter config */
-#define LINE_QUEUE_BUF_SIZE	 128   /* 循环队列缓冲区大小 */
-#define LINE_LEN_MAX         100   /* 支持行最大长度 */
-#define LINE_HISTORY_MAX	 4     /* 历史命令最大记录条数 */
-
 #define DEFAULT_PROMPT       "hello>"
 
 typedef enum {
@@ -36,13 +30,19 @@ typedef enum {
     ECHO_DISABLE,
 } line_echo_t;
 
+typedef void (*line_handle_fn_t)(void *ctx, char *line);
+
+typedef struct cli_line_cfg {
+    int16_t queue_size;
+    int16_t line_buf_size;
+    int16_t history_max;
+    line_handle_fn_t handle_cb;  /* 命令行处理回调函数 */
+    void *ctx;
+} cli_line_cfg_t;
+
 typedef struct cli_line cli_line_t;
 
-typedef int32_t (*line_printf)(const char *format, ...);
-
-typedef void (*line_handle)(void *ctx, char *line);
-
-cli_line_t *CliLineCreate(const char *prompt, line_printf printf, line_handle handle, void *ctx);
+cli_line_t *CliLineCreate(const cli_inf_t *inf, const cli_line_cfg_t *cfg);
 
 void CliLineDestory(cli_line_t *line);
 

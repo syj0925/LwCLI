@@ -39,8 +39,8 @@ typedef int32_t (*shell_printf)(const char *format, ...);
 void CliShellInit(int32_t cmd_max, shell_printf printf);
 
 int32_t CliShellRegister(char *cmd,
-                             void (*function)(int, char **),
-                             char *describe);
+                         void (*function)(int, char **),
+                         char *describe);
 void CliShellTick(void);
 
 void CliShellInputBlock(uint8_t *pdata, uint32_t datalen);
