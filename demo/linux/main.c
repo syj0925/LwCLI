@@ -95,6 +95,12 @@ static void cmdExit(int argc, char **argv)
 static void cmdVersion(int argc, char **argv)
 {
     printf("app_ver:%s\r\n", "1.0");
+
+    CliShellUnegister("reboot");
+    CliShellUnegister("reset");
+    CliShellUnegister("factory");
+    CliShellUnegister("exit");
+    CliShellUnegister("ver");
 }
 
 int Xprintf(const char *fmt, ...)
@@ -113,10 +119,26 @@ int Xprintf(const char *fmt, ...)
 
 void CliCmdInit(void)
 {
-    CliShellInit(40, Xprintf);
+    static const cli_api_t api = {
+        .printf_cb = Xprintf,
+        .malloc_cb = malloc,
+        .free_cb = free,
+    };
+
+    cli_shell_cfg_t cfg = {
+        .queue_size = 128,
+        .line_buf_size = 256,
+        .history_max = 10,
+        .cmd_max = 50,
+        .username = "syj0925",
+        .password = "12345678",
+        .prompt = "ffo>",
+    };
+
+    CliShellInit(&api, &cfg);
 
     CliShellRegister("reboot",    cmdReboot,    "reboot system");
-    CliShellRegister("reset",     cmdReset,     "clear user data and reboot"); 
+    CliShellRegister("reset",     cmdReset,     "clear user data and reboot");
     CliShellRegister("factory",   cmdFactory,   "factory reset and reboot");
     CliShellRegister("exit",      cmdExit,      "exit the app");   /* 结束本应用，适用linux平台 */
     CliShellRegister("ver",       cmdVersion,   "query version");  /* 读版本 */
@@ -138,7 +160,7 @@ int main(int argc, char **argv)
 				exit(0);
 			}
 
-			CliShellInputChar(c);	
+			CliShellInputChar(c);
 		}
 
 		CliShellTick();

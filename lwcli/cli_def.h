@@ -30,15 +30,15 @@ enum {
 };
 
 typedef int32_t (*cli_printf_fn_t)(const char *format, ...);
-typedef void   *(*cli_malloc_fn_t)(uint32_t size);
+typedef void   *(*cli_malloc_fn_t)(size_t size);
 typedef void    (*cli_free_fn_t)  (void *base);
 
 /* cli interface */
-typedef struct cli_inf {
+typedef struct cli_api {
     cli_printf_fn_t printf_cb;    /* printf func pointer */
     cli_malloc_fn_t malloc_cb;    /* malloc func pointer */
     cli_free_fn_t   free_cb;      /* free func pointer */
-} cli_inf_t;
+} cli_api_t;
 
 
 #ifdef __cplusplus

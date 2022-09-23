@@ -1,6 +1,6 @@
 /**
- * @brief cmd cli
- * @file cmd_cli.c
+ * @brief cli shell module
+ * @file cli_shell.c
  * @version 1.0
  * @author suyoujiang
  * @date 2020-3-18 9:42:13
@@ -20,7 +20,8 @@
 /*----------------------------------------------*
  * macros                                       *
  *----------------------------------------------*/
-#define XASSERT(p)  //assert(p)
+#define PROMPT_LOGIN    "Login:"
+#define PROMPT_PASSWD   "Password:"
 
 /*----------------------------------------------*
  * module-wide global variables                 *
@@ -32,19 +33,20 @@ typedef enum  login_status {
 } login_status_t;
 
 typedef struct cli_shell {
-    cli_line_t  *obj_line;
-    cli_cmd_t   *obj_cmd;
-    shell_printf printf_cb;
+    const cli_api_t *api;
 
-#if LOGIN_ENABLE > 0
+    cli_cmd_t  *obj_cmd;
+    cli_line_t *obj_line;
+
     login_status_t login;
     const char *username;
     const char *password;
-    char        temp_user[128];
-#endif
+    const char *prompt;
+
+    char temp_user[128];
 } cli_shell_t;
 
-static cli_shell_t sg_shell;
+static cli_shell_t *s_shell = NULL;
 
 /*----------------------------------------------*
  * routines' implementations                    *
@@ -52,116 +54,149 @@ static cli_shell_t sg_shell;
 
 static void cmdHandle(void *ctx, char *line)
 {
-#if LOGIN_ENABLE > 0
-    switch (sg_shell.login) {
-        case LOGIN_USERNAME:
-            if (strlen(line) <= 0) {
-                break;
-            }
-
-            sg_shell.login = LOGIN_PASSWORD;
-            strncpy(sg_shell.temp_user, line, sizeof(sg_shell.temp_user)-1);
-
-            CliLineSetEcho(sg_shell.obj_line, ECHO_DISABLE);
-            CliLineSetPrompt(sg_shell.obj_line, PROMPT_PASSWD);
+    switch (s_shell->login) {
+    case LOGIN_USERNAME:
+        if (strlen(line) <= 0) {
             break;
+        }
 
-        case LOGIN_PASSWORD:
-            if (!strcmp(sg_shell.temp_user, sg_shell.username) &&
-                !strcmp(line, sg_shell.password)) {
-                sg_shell.login = LOGIN_SUCCESS;
-                CliLineSetPrompt(sg_shell.obj_line, PROMPT_CMD);
-                sg_shell.printf_cb("Login success\r\n");
-            } else {
-                sg_shell.login = LOGIN_USERNAME;
-                CliLineSetPrompt(sg_shell.obj_line, PROMPT_LOGIN);
-                sg_shell.printf_cb("Login incorrect\r\n");
-            }
-            CliLineSetEcho(sg_shell.obj_line, ECHO_ENABLE);
-            break;
+        s_shell->login = LOGIN_PASSWORD;
+        strncpy(s_shell->temp_user, line, sizeof(s_shell->temp_user)-1);
 
-        case LOGIN_SUCCESS:
-            if (strlen(line) <= 0) {
-                break;
-            }
+        CliLineSetEcho(s_shell->obj_line, ECHO_DISABLE);
+        CliLineSetPrompt(s_shell->obj_line, PROMPT_PASSWD);
+        break;
 
-            CliCmdHandle(sg_shell.obj_cmd, line);
+    case LOGIN_PASSWORD:
+        if (!strcmp(s_shell->temp_user, s_shell->username) &&
+            !strcmp(line, s_shell->password)) {
+            s_shell->login = LOGIN_SUCCESS;
+            CliLineSetPrompt(s_shell->obj_line, s_shell->prompt);
+            s_shell->api->printf_cb("Login success\r\n");
+        } else {
+            s_shell->login = LOGIN_USERNAME;
+            CliLineSetPrompt(s_shell->obj_line, PROMPT_LOGIN);
+            s_shell->api->printf_cb("Login incorrect\r\n");
+        }
+        CliLineSetEcho(s_shell->obj_line, ECHO_ENABLE);
+        break;
+
+    case LOGIN_SUCCESS:
+        if (strlen(line) <= 0) {
             break;
-        default:
-            break;
+        }
+
+        CliCmdHandle(s_shell->obj_cmd, line);
+        break;
+    default:
+        break;
     }
-#else
-    if (strlen(line) > 0) {
-        CliCmdHandle(sg_shell.obj_cmd, line);
-    }
-#endif
+
 }
 
-#if LOGIN_ENABLE > 0
 static void cmdLogout(int argc, char **argv)
 {
-    sg_shell.printf_cb("Logout\r\n");
-    sg_shell.login = LOGIN_USERNAME;
-    CliLineSetPrompt(sg_shell.obj_line, PROMPT_LOGIN);
+    s_shell->api->printf_cb("Logout\r\n");
+    s_shell->login = LOGIN_USERNAME;
+    CliLineSetPrompt(s_shell->obj_line, PROMPT_LOGIN);
 }
-#endif
 
-void CliShellInit(int32_t cmd_max, shell_printf printf)
+int32_t CliShellInit(const cli_api_t *api, cli_shell_cfg_t *cfg)
 {
-    memset(&sg_shell, 0, sizeof(sg_shell));
+    if (s_shell) {
+        CliShellDeinit();
+    }
 
-    static cli_inf_t inf = {
-        .malloc_cb = malloc,
-        .free_cb = free,
-    };
-    inf.printf_cb = printf;
+    if (!api || !api->malloc_cb || !api->free_cb ||
+        !api->printf_cb || !cfg) {
+        return RET_ERROR;
+    }
 
-    static cli_line_cfg_t cfg = {
-        .queue_size = 128,
-        .line_buf_size = 256,
-        .history_max = 10,
-        .handle_cb = cmdHandle,
-    };
-    cfg.ctx = sg_shell.obj_cmd;
+	s_shell = (cli_shell_t *)api->malloc_cb(sizeof(cli_shell_t));
+    if (!s_shell) {
+        return RET_ERROR;
+    }
 
-    sg_shell.obj_line = CliLineCreate(&inf, &cfg);
-    sg_shell.obj_cmd = CliCmdCreate(&inf, cmd_max);
-    XASSERT(sg_shell.obj_cmd != NULL && sg_shell.obj_line != NULL);
+    memset(s_shell, 0, sizeof(cli_shell_t));
 
-    sg_shell.printf_cb = printf;
+    s_shell->api = api;
+    s_shell->username = cfg->username;
+    s_shell->password = cfg->password;
+    if (cfg->prompt) {
+        s_shell->prompt = cfg->prompt;
+    } else {
+        s_shell->prompt = "hello> ";
+    }
 
-#if LOGIN_ENABLE > 0
-    sg_shell.username = CLI_USERNAME;
-    sg_shell.password = CLI_PASSWORD;
+    cli_line_cfg_t line_cfg = {0};
+    line_cfg.queue_size    = cfg->queue_size;
+    line_cfg.line_buf_size = cfg->line_buf_size;
+    line_cfg.history_max   = cfg->history_max;
+    line_cfg.handle_cb     = cmdHandle;
 
-    CliLineSetPrompt(sg_shell.obj_line, PROMPT_LOGIN);
-    sg_shell.printf_cb(PROMPT_LOGIN);
-    CliCmdRegister(sg_shell.obj_cmd, "logout", cmdLogout, "log out");
-#else
-    CliLineSetPrompt(sg_shell.obj_line, PROMPT_CMD);
-    sg_shell.printf_cb(PROMPT_CMD);
-#endif
+    s_shell->obj_line = CliLineCreate(api, &line_cfg);
+    if (!s_shell->obj_line) {
+        api->free_cb(s_shell);
+        s_shell = NULL;
+        return RET_ERROR;
+    }
+
+    s_shell->obj_cmd = CliCmdCreate(api, cfg->cmd_max);
+    if (!s_shell->obj_cmd) {
+        api->free_cb(s_shell);
+        CliLineDestroy(s_shell->obj_line);
+        s_shell = NULL;
+        return RET_ERROR;
+    }
+
+    if (s_shell->username && s_shell->password) {
+        s_shell->login = LOGIN_USERNAME;
+        CliLineSetPrompt(s_shell->obj_line, PROMPT_LOGIN);
+        s_shell->api->printf_cb(PROMPT_LOGIN);
+        CliCmdRegister(s_shell->obj_cmd, "logout", cmdLogout, "log out");
+    } else {
+        s_shell->login = LOGIN_SUCCESS;
+        CliLineSetPrompt(s_shell->obj_line, s_shell->prompt);
+        s_shell->api->printf_cb(s_shell->prompt);
+    }
+
+    return RET_OK;
+}
+
+void CliShellDeinit(void)
+{
+    if (s_shell) {
+        CliLineDestroy(s_shell->obj_line);
+        CliCmdDestroy(s_shell->obj_cmd);
+        s_shell->api->free_cb(s_shell);
+        s_shell = NULL;
+    }
 }
 
 int32_t CliShellRegister(char *cmd,
                          void (*function)(int, char **),
                          char *describe)
 {
-    return CliCmdRegister(sg_shell.obj_cmd, cmd, function, describe);
+    return CliCmdRegister(s_shell->obj_cmd, cmd, function, describe);
+}
+
+int32_t CliShellUnegister(char *cmd)
+{
+    return CliCmdUnregister(s_shell->obj_cmd, cmd);
 }
 
 void CliShellTick(void)
 {
-    CliLineTick(sg_shell.obj_line);
+    CliLineTick(s_shell->obj_line);
 }
 
 void CliShellInputBlock(uint8_t *pdata, uint32_t datalen)
 {
-    CliLineInputBlock(sg_shell.obj_line, pdata, datalen);
+    CliLineInputBlock(s_shell->obj_line, pdata, datalen);
 }
 
 void CliShellInputChar(uint8_t data)
 {
-    CliLineInputChar(sg_shell.obj_line, data);
+    CliLineInputChar(s_shell->obj_line, data);
 }
 

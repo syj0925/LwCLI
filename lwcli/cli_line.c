@@ -1,5 +1,5 @@
 /**
- * @brief cli line
+ * @brief cli line module
  * @file cli_line.c
  * @version 1.0
  * @author Su YouJiang
@@ -19,7 +19,7 @@
 /*----------------------------------------------*
  * macros                                       *
  *----------------------------------------------*/
-
+#define DEFAULT_PROMPT  "hello>"
 #define STR_BACKSPACE   "\b \b"
 #define STR_ENTER       "\r\n"
 
@@ -64,24 +64,24 @@ typedef struct queue {
 } queue_t;
 
 struct cli_line {
-    const cli_inf_t *inf;
-    const cli_line_cfg_t *cfg;
+    const cli_api_t *api;
+    cli_line_cfg_t cfg;                  /* Configuration parameters */
 
-    const char *prompt;                  /* 提示语 */
-    uint8_t     echo_opt;                /* 回显选项 */
-    uint8_t     key_enter;               /* 回车键标记 */
-    uint8_t     key_combo;               /* 组合键标记 */
+    const char *prompt;
+    uint8_t     echo_opt;                /* Echo enable or disable */
+    uint8_t     key_enter;               /* Key enter or newline */
+    uint8_t     key_combo;               /* Key combination */
 
-    uint8_t     history_num;             /* history number */
-    dlist_t     history_list;            /* history list */
-    dlist_t    *history_index;           /* history check index */
+    uint8_t     history_num;             /* History number */
+    dlist_t     history_list;            /* History list */
+    dlist_t    *history_index;           /* History check index */
 
-    uint16_t    line_cursor;             /* 光标位置 */
-    uint16_t    line_position;           /* 行写入位置 */
-    char       *line_buf;                /* 存放命令行 */
+    uint16_t    line_cursor;             /* Line cursor position */
+    uint16_t    line_end;                /* Line end position */
+    char       *line_buf;                /* Line buffer */
 
-    queue_t    queue_r;                  /* 输入数据队列 */
-	uint8_t    data[0];
+    queue_t     queue;                   /* Input cache queue */
+	uint8_t     data[0];
 };
 
 /*----------------------------------------------*
@@ -155,43 +155,43 @@ static void keyUpDownHandle(cli_line_t *line, uint8_t readbyte)
 
     if (line->history_index == NULL) {
         line->history_index = line->history_list.next;
-    } else if (readbyte == 'A') {                                              /* UP or Down */
-        if (line->history_index->prev) {
+    } else if (readbyte == 'B') {                                              /* UP or Down */
+        if (line->history_index->prev != &line->history_list) {
             line->history_index = line->history_index->prev;
         }
-    } else if (readbyte == 'B') {
-        if (line->history_index->next) {
+    } else if (readbyte == 'A') {
+        if (line->history_index->next != &line->history_list) {
             line->history_index = line->history_index->next;
         }
     }
 
-    while (line->line_position > 0) {
-        line->inf->printf_cb(STR_BACKSPACE);
-        line->line_position--;
+    while (line->line_end > 0) {
+        line->api->printf_cb(STR_BACKSPACE);
+        line->line_end--;
     }
     line->line_cursor = 0;
     history_t *history = GetContainerOf(line->history_index, history_t, node);
-    line->inf->printf_cb("%s", history->data);
+    line->api->printf_cb("%s", history->data);
 
-    strncpy(line->line_buf, history->data, line->cfg->line_buf_size);
-    line->line_buf[line->cfg->line_buf_size - 1] = '\0';
-    line->line_position = strlen(line->line_buf);
-    line->line_cursor = line->line_position;
+    strncpy(line->line_buf, history->data, line->cfg.line_buf_size);
+    line->line_buf[line->cfg.line_buf_size - 1] = '\0';
+    line->line_end = strlen(line->line_buf);
+    line->line_cursor = line->line_end;
 }
 
 static void keyRightLeftHandle(cli_line_t *line, uint8_t readbyte)
 {
     if (readbyte == 'C') {
-        if (line->line_cursor < line->line_position) {
+        if (line->line_cursor < line->line_end) {
             if (line->echo_opt == ECHO_ENABLE) {
-                line->inf->printf_cb("%c", line->line_buf[line->line_cursor]);
+                line->api->printf_cb("%c", line->line_buf[line->line_cursor]);
             }
             line->line_cursor++;
         }
     } else if (readbyte == 'D') {
         if (line->line_cursor) {
             if (line->echo_opt == ECHO_ENABLE) {
-                line->inf->printf_cb("\b");
+                line->api->printf_cb("\b");
             }
             line->line_cursor--;
         }
@@ -200,13 +200,15 @@ static void keyRightLeftHandle(cli_line_t *line, uint8_t readbyte)
 
 static void saveHistory(cli_line_t *line)
 {
-   if ((line->echo_opt == ECHO_DISABLE) || (line->line_position <= 0)) {
+    line->history_index = NULL;
+   if ((line->echo_opt == ECHO_DISABLE) || (line->line_end <= 0)) {
         return;
     }
 
     history_t *history = NULL;
 
-    /* 查询命令是否存在于历史命令，如果存在则移到链表头 */
+    /* Query whether the command exists in the history command,
+       if so, move to the head of the list */
     DlistForEachEntry(&line->history_list, history, history_t, node)
     {
         if (strcmp(history->data, line->line_buf) == 0) {
@@ -216,39 +218,39 @@ static void saveHistory(cli_line_t *line)
         }
     }
 
-    /* 判断历史命令是否 >= 最大值，>= 则删除链尾命令 */
+    /* Number of historical commands >= maximum value, >= delete list tail command */
     uint8_t history_num = DlistEntryNumber(&line->history_list);
 
-    if (history_num >= line->cfg->history_max) {
+    if (history_num >= line->cfg.history_max) {
         history_t *history = DlistLastEntry(&line->history_list, history_t, node);
         DlistDel(&history->node);
-        line->inf->free_cb(history);
+        line->api->free_cb(history);
     }
 
-    history = (history_t *)line->inf->malloc_cb(sizeof(history_t) + line->line_position + 1);
+    history = (history_t *)line->api->malloc_cb(sizeof(history_t) + line->line_end + 1);
     if (!history) {
         return;
     }
 
-    strncpy(history->data, line->line_buf, line->line_position + 1);
-    line->line_buf[line->line_position] = '\0';
+    strncpy(history->data, line->line_buf, line->line_end + 1);
+    line->line_buf[line->line_end] = '\0';
 
-    DlistAddTail(&history->node, &line->history_list);
+    DlistAdd(&history->node, &line->history_list);
 }
 
 static void keyEnterHandle(cli_line_t *line, uint8_t readbyte)
 {
-    line->inf->printf_cb(STR_ENTER);
+    line->api->printf_cb(STR_ENTER);
 
     /* save history command */
     saveHistory(line);
 
-    line->cfg->handle_cb(line->cfg->ctx, line->line_buf);
+    line->cfg.handle_cb(line->cfg.ctx, line->line_buf);
 
-    memset(line->line_buf, '\0', line->cfg->line_buf_size);
-    line->line_position = 0;
+    memset(line->line_buf, '\0', line->cfg.line_buf_size);
+    line->line_end = 0;
     line->line_cursor = 0;
-    line->inf->printf_cb("%s", line->prompt);
+    line->api->printf_cb("%s", line->prompt);
 }
 
 static void keyBackspaceHandle(cli_line_t *line, uint8_t readbyte)
@@ -256,58 +258,58 @@ static void keyBackspaceHandle(cli_line_t *line, uint8_t readbyte)
     if (line->line_cursor > 0) {
 
         line->line_cursor--;
-        line->line_position--;
+        line->line_end--;
 
-        if (line->line_position > line->line_cursor) {
+        if (line->line_end > line->line_cursor) {
 
             memmove(&line->line_buf[line->line_cursor],
                     &line->line_buf[line->line_cursor + 1],
-                    line->line_position - line->line_cursor);
-            line->line_buf[line->line_position] = '\0';
+                    line->line_end - line->line_cursor);
+            line->line_buf[line->line_end] = '\0';
 
             if (line->echo_opt == ECHO_ENABLE) {
-                line->inf->printf_cb("\b%s  \b", &line->line_buf[line->line_cursor]);
+                line->api->printf_cb("\b%s  \b", &line->line_buf[line->line_cursor]);
                 /* Move the cursor to the origin position */
-                for (int32_t i = line->line_cursor; i <= line->line_position; i++) {
-                    line->inf->printf_cb("\b");
+                for (int32_t i = line->line_cursor; i <= line->line_end; i++) {
+                    line->api->printf_cb("\b");
                 }
             }
         } else {
             if (line->echo_opt == ECHO_ENABLE) {
-                line->inf->printf_cb(STR_BACKSPACE);
+                line->api->printf_cb(STR_BACKSPACE);
             }
-            line->line_buf[line->line_position] = '\0';
+            line->line_buf[line->line_end] = '\0';
         }
     }
 }
 
 static void keyNormalCharacterHandle(cli_line_t *line, uint8_t readbyte)
 {
-        if (line->line_cursor < line->line_position) {
+        if (line->line_cursor < line->line_end) {
 
             memmove(&line->line_buf[line->line_cursor + 1],
                     &line->line_buf[line->line_cursor],
-                    line->line_position - line->line_cursor);
+                    line->line_end - line->line_cursor);
 
             line->line_buf[line->line_cursor] = readbyte;
 
             if (line->echo_opt == ECHO_ENABLE) {
-                line->inf->printf_cb("%s", &line->line_buf[line->line_cursor]);
+                line->api->printf_cb("%s", &line->line_buf[line->line_cursor]);
                 /* Move the cursor to new position */
-                for (int32_t i = line->line_cursor; i < line->line_position; i++) {
-                    line->inf->printf_cb("\b");
+                for (int32_t i = line->line_cursor; i < line->line_end; i++) {
+                    line->api->printf_cb("\b");
                 }
             }
 
         } else {
             if (line->echo_opt == ECHO_ENABLE) {
-                line->inf->printf_cb("%c", readbyte);
+                line->api->printf_cb("%c", readbyte);
             }
 
-            line->line_buf[line->line_position] = readbyte;
+            line->line_buf[line->line_end] = readbyte;
         }
 
-        line->line_position++;
+        line->line_end++;
         line->line_cursor++;
 }
 
@@ -355,23 +357,23 @@ static void lineParse(cli_line_t *line, uint8_t readbyte)
         /* cache input characters */
         line->key_enter = 0;
 
-        if (line->line_position < (line->cfg->line_buf_size - 1)) {
+        if (line->line_end < (line->cfg.line_buf_size - 1)) {
             keyNormalCharacterHandle(line, readbyte);
-        }  else if (line->line_position == (line->cfg->line_buf_size - 1)) {
-            line->line_buf[line->line_position] = '\0';
-            line->inf->printf_cb("%s", STR_ENTER"Size limit exceeded!");
+        }  else if (line->line_end == (line->cfg.line_buf_size - 1)) {
+            line->line_buf[line->line_end] = '\0';
+            line->api->printf_cb("%s", STR_ENTER"Size limit exceeded!");
         }
     }
 }
 
-cli_line_t *CliLineCreate(const cli_inf_t *inf, const cli_line_cfg_t *cfg)
+cli_line_t *CliLineCreate(const cli_api_t *api, cli_line_cfg_t *cfg)
 {
-    if (!inf || !inf->malloc_cb || !inf->free_cb ||
-        !inf->printf_cb  || !cfg || !cfg->handle_cb) {
+    if (!api || !api->malloc_cb || !api->free_cb ||
+        !api->printf_cb  || !cfg || !cfg->handle_cb) {
         return NULL;
     }
 
-	cli_line_t *line = (cli_line_t *)inf->malloc_cb(sizeof(cli_line_t) +
+	cli_line_t *line = (cli_line_t *)api->malloc_cb(sizeof(cli_line_t) +
 	                                                cfg->queue_size +
 	                                                cfg->line_buf_size);
 
@@ -382,16 +384,16 @@ cli_line_t *CliLineCreate(const cli_inf_t *inf, const cli_line_cfg_t *cfg)
     memset(line, 0, sizeof(cli_line_t) + cfg->queue_size + cfg->line_buf_size);
     line->prompt = DEFAULT_PROMPT;
     line->echo_opt = ECHO_ENABLE;
-    line->inf = inf;
-    line->cfg = cfg;
-    line->queue_r.queue_size = cfg->queue_size;
-    line->line_buf = &line->data[cfg->queue_size];
+    line->api = api;
+    line->cfg = *cfg;
+    line->queue.queue_size = cfg->queue_size;
+    line->line_buf = (char *)&line->data[cfg->queue_size];
     DlistInit(&line->history_list);
 
     return line;
 }
 
-void CliLineDestory(cli_line_t *line)
+void CliLineDestroy(cli_line_t *line)
 {
     if (line == NULL) {
         return;
@@ -401,10 +403,10 @@ void CliLineDestory(cli_line_t *line)
     while (!DlistIsEmpty(&line->history_list)) {
         history = DlistFirstEntry(&line->history_list, history_t, node);
         DlistDel(&history->node);
-        line->inf->free_cb(history);
+        line->api->free_cb(history);
     }
 
-    line->inf->free_cb(line);
+    line->api->free_cb(line);
 }
 
 void CliLineSetPrompt(cli_line_t *line, const char *prompt)
@@ -431,7 +433,7 @@ void CliLineInputChar(cli_line_t *line, uint8_t data)
         return;
     }
 
-    queuePush(&line->queue_r, data);
+    queuePush(&line->queue, data);
 }
 
 void CliLineInputBlock(cli_line_t *line, uint8_t *pdata, uint32_t datalen)
@@ -440,7 +442,7 @@ void CliLineInputBlock(cli_line_t *line, uint8_t *pdata, uint32_t datalen)
         return;
     }
 
-    queuePushBlock(&line->queue_r, pdata, datalen);
+    queuePushBlock(&line->queue, pdata, datalen);
 }
 
 void CliLineTick(cli_line_t *line)
@@ -450,7 +452,7 @@ void CliLineTick(cli_line_t *line)
     }
 
     while (1) {
-        int16_t readbyte = queuePop(&line->queue_r);
+        int16_t readbyte = queuePop(&line->queue);
 
         if (readbyte >= 0) {
             lineParse(line, readbyte);

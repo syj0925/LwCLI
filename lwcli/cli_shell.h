@@ -1,5 +1,5 @@
 /**
- * @brief cli shell
+ * @brief cli shell APIs
  * @file cli_shell.h
  * @version 1.0
  * @author Su YouJiang
@@ -23,24 +23,28 @@ extern "C"{
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include "cli_def.h"
 
-#define LOGIN_ENABLE    1
-#if LOGIN_ENABLE > 0
-#define PROMPT_LOGIN    "Login:"
-#define PROMPT_PASSWD   "Password:"
-#define CLI_USERNAME    "admin"
-#define CLI_PASSWORD    "admin"
-#endif
-#define PROMPT_CMD      "hello> "
+typedef struct cli_shell_cfg {
+    int16_t queue_size;
+    int16_t line_buf_size;
+    int16_t history_max;
+    int16_t cmd_max;
+    const char *username;
+    const char *password;
+    const char *prompt;
+} cli_shell_cfg_t;
 
+int32_t CliShellInit(const cli_api_t *api, cli_shell_cfg_t *cfg);
 
-typedef int32_t (*shell_printf)(const char *format, ...);
-
-void CliShellInit(int32_t cmd_max, shell_printf printf);
+void CliShellDeinit(void);
 
 int32_t CliShellRegister(char *cmd,
                          void (*function)(int, char **),
                          char *describe);
+
+int32_t CliShellUnegister(char *cmd);
+
 void CliShellTick(void);
 
 void CliShellInputBlock(uint8_t *pdata, uint32_t datalen);

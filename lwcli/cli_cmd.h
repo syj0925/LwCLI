@@ -1,5 +1,5 @@
 /**
- * @brief cli command
+ * @brief cli command APIs
  * @file cli_cmd.h
  * @version 1.0
  * @author Su YouJiang
@@ -33,7 +33,7 @@ typedef struct cli_cmd_entry {
 
 typedef struct cli_cmd cli_cmd_t;
 
-cli_cmd_t *CliCmdCreate(const cli_inf_t *inf, int16_t cmd_max);
+cli_cmd_t *CliCmdCreate(const cli_api_t *api, int16_t cmd_max);
 
 void CliCmdDestroy(cli_cmd_t *cli_cmd);
 

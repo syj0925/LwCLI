@@ -1,5 +1,5 @@
 /**
- * @brief cli line
+ * @brief cli line APIs
  * @file cli_line.h
  * @version 1.0
  * @author Su YouJiang
@@ -22,9 +22,6 @@ extern "C"{
 
 #include "cli_def.h"
 
-/* parameter config */
-#define DEFAULT_PROMPT       "hello>"
-
 typedef enum {
     ECHO_ENABLE = 0,
     ECHO_DISABLE,
@@ -42,9 +39,9 @@ typedef struct cli_line_cfg {
 
 typedef struct cli_line cli_line_t;
 
-cli_line_t *CliLineCreate(const cli_inf_t *inf, const cli_line_cfg_t *cfg);
+cli_line_t *CliLineCreate(const cli_api_t *api, cli_line_cfg_t *cfg);
 
-void CliLineDestory(cli_line_t *line);
+void CliLineDestroy(cli_line_t *line);
 
 void CliLineSetPrompt(cli_line_t *line, const char *prompt);
 

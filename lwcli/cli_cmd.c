@@ -1,5 +1,5 @@
 /**
- * @brief cli command
+ * @brief cli command module
  * @file cli_cmd.c
  * @version 1.0
  * @author Su YouJiang
@@ -19,7 +19,7 @@
  * module-wide global variables                 *
  *----------------------------------------------*/
 struct cli_cmd {
-    const cli_inf_t *inf;
+    const cli_api_t *api;
     uint16_t         cmd_max;
     uint16_t         cmd_num;
     cli_cmd_entry_t *list_head;
@@ -53,32 +53,32 @@ static int32_t cmdParse(char *buf, char **argv)
 
 static void dumpHelpInfo(cli_cmd_t *cli_cmd)
 {
-	cli_cmd->inf->printf_cb("Command list[%d]:\r\n", cli_cmd->cmd_num);
-	cli_cmd->inf->printf_cb("==============================\r\n");
+	cli_cmd->api->printf_cb("Command list[%d]:\r\n", cli_cmd->cmd_num);
+	cli_cmd->api->printf_cb("==============================\r\n");
 
 	cli_cmd_entry_t *target = cli_cmd->list_head;
 	while (target) {
-      //cli_cmd->inf->printf_cb("  [%12s] %s\r\n", target->command, target->describe);  /* 左对齐，12位长度，不够补空格 */
-		cli_cmd->inf->printf_cb("  [%-12s] %s\r\n", target->command, target->describe); /* 右对齐，12位长度，不够补空格 */
+      //cli_cmd->api->printf_cb("  [%12s] %s\r\n", target->command, target->describe);  /* 左对齐，12位长度，不够补空格 */
+		cli_cmd->api->printf_cb("  [%-12s] %s\r\n", target->command, target->describe); /* 右对齐，12位长度，不够补空格 */
 
 		target = target->next;
 	}
 }
 
-cli_cmd_t *CliCmdCreate(const cli_inf_t *inf, int16_t cmd_max)
+cli_cmd_t *CliCmdCreate(const cli_api_t *api, int16_t cmd_max)
 {
-    if (!inf || !inf->malloc_cb || !inf->free_cb || !inf->printf_cb)
+    if (!api || !api->malloc_cb || !api->free_cb || !api->printf_cb)
     {
         return NULL;
     }
 
-    cli_cmd_t *cli_cmd = (cli_cmd_t *)inf->malloc_cb(sizeof(cli_cmd_t));
+    cli_cmd_t *cli_cmd = (cli_cmd_t *)api->malloc_cb(sizeof(cli_cmd_t));
     if (!cli_cmd) {
         return NULL;
     }
 
     memset(cli_cmd, 0, sizeof(cli_cmd_t));
-    cli_cmd->inf = inf;
+    cli_cmd->api = api;
     cli_cmd->cmd_max = cmd_max;
 
     return cli_cmd;
@@ -95,11 +95,11 @@ void CliCmdDestroy(cli_cmd_t *cli_cmd)
 	while (target) {
         cli_cmd_entry_t *temp = target;
 		target = target->next;
-		cli_cmd->inf->free_cb(temp);
+		cli_cmd->api->free_cb(temp);
 	}
 
     memset(cli_cmd, 0, sizeof(cli_cmd_t));
-    cli_cmd->inf->free_cb(cli_cmd);
+    cli_cmd->api->free_cb(cli_cmd);
 }
 
 int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
@@ -126,7 +126,7 @@ int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
         return RET_ERROR;
     }
 
-    cli_cmd_entry_t *node = (cli_cmd_entry_t *)cli_cmd->inf->malloc_cb(sizeof(cli_cmd_entry_t));
+    cli_cmd_entry_t *node = (cli_cmd_entry_t *)cli_cmd->api->malloc_cb(sizeof(cli_cmd_entry_t));
     if (node == NULL) {
         return RET_ERROR;
     }
@@ -134,8 +134,18 @@ int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
     node->command  = cmd;
     node->function = function;
     node->describe = describe;
-    node->next = cli_cmd->list_head;
-    cli_cmd->list_head = node;
+    node->next     = NULL;
+
+    if (!cli_cmd->list_head) {
+        cli_cmd->list_head = node;
+    } else {
+        cli_cmd_entry_t *tail = cli_cmd->list_head;
+    	while (tail->next) {
+    		tail = tail->next;
+    	}
+        tail->next = node;
+    }
+
     cli_cmd->cmd_num++;
 
     return RET_OK;
@@ -154,7 +164,7 @@ int32_t CliCmdUnregister(cli_cmd_t *cli_cmd, char *cmd)
 
 		if (!strcmp(cmd, entry->command)) {
 			*curr = entry->next;
-			cli_cmd->inf->free_cb(entry);
+			cli_cmd->api->free_cb(entry);
             cli_cmd->cmd_num--;
             return RET_OK;
 		} else {
@@ -191,9 +201,9 @@ void CliCmdHandle(cli_cmd_t *cli_cmd, char *cmdline)
     		target = target->next;
     	}
 
-        cli_cmd->inf->printf_cb("Unknown command:%s\r\n", argv[0]);
+        cli_cmd->api->printf_cb("Unknown command:%s\r\n", argv[0]);
     } else {
-        cli_cmd->inf->printf_cb("Unknown data!!!\r\n");
+        cli_cmd->api->printf_cb("Unknown data!!!\r\n");
     }
 }
 
