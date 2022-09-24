@@ -22,10 +22,9 @@ extern "C"{
 
 #include "cli_def.h"
 
-#define CMD_ARGC_MAX    10
+#define CLI_MCD_EN_LIST 0
 
 typedef struct cli_cmd_entry {
-	struct cli_cmd_entry *next;
     char *command;
     void (*function)(int, char **);
     char *describe;
@@ -33,14 +32,18 @@ typedef struct cli_cmd_entry {
 
 typedef struct cli_cmd cli_cmd_t;
 
-cli_cmd_t *CliCmdCreate(const cli_api_t *api, int16_t cmd_max);
+cli_cmd_t *CliCmdCreate(const cli_api_t *api);
 
 void CliCmdDestroy(cli_cmd_t *cli_cmd);
 
+#if CLI_MCD_EN_LIST > 0
 int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
                        char *cmd,
                        void (*function)(int, char **),
                        char *describe);
+#else
+int32_t CliCmdTableRegister(cli_cmd_t *cli_cmd, const cli_cmd_entry_t *entry, int16_t num);
+#endif
 
 int32_t CliCmdUnregister(cli_cmd_t *cli_cmd, char *cmd);
 

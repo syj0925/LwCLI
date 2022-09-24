@@ -24,12 +24,12 @@ extern "C"{
 #include <string.h>
 #include <stdlib.h>
 #include "cli_def.h"
+#include "cli_cmd.h"
 
 typedef struct cli_shell_cfg {
-    int16_t queue_size;
+    int16_t line_queue_size;
     int16_t line_buf_size;
-    int16_t history_max;
-    int16_t cmd_max;
+    int16_t line_history_num;
     const char *username;
     const char *password;
     const char *prompt;
@@ -42,6 +42,8 @@ void CliShellDeinit(void);
 int32_t CliShellRegister(char *cmd,
                          void (*function)(int, char **),
                          char *describe);
+
+int32_t CliShellTableRegister(const cli_cmd_entry_t *entry, int16_t num);
 
 int32_t CliShellUnegister(char *cmd);
 

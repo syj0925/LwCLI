@@ -16,13 +16,30 @@
 #include "cli_cmd.h"
 
 /*----------------------------------------------*
+ * macros                                       *
+ *----------------------------------------------*/
+#define CMD_ARGC_MAX    10
+
+/*----------------------------------------------*
  * module-wide global variables                 *
  *----------------------------------------------*/
+typedef struct cli_cmd_list {
+	struct cli_cmd_list *next;
+    char *command;
+    void (*function)(int, char **);
+    char *describe;
+} cli_cmd_list_t;
+
 struct cli_cmd {
     const cli_api_t *api;
-    uint16_t         cmd_max;
-    uint16_t         cmd_num;
-    cli_cmd_entry_t *list_head;
+#if CLI_MCD_EN_LIST > 0
+    uint16_t         list_num;
+    cli_cmd_list_t  *list_head;
+#else
+    uint16_t         entry_size;
+    uint16_t         entry_num;
+    cli_cmd_entry_t **entry;
+#endif
 };
 
 /*----------------------------------------------*
@@ -53,19 +70,28 @@ static int32_t cmdParse(char *buf, char **argv)
 
 static void dumpHelpInfo(cli_cmd_t *cli_cmd)
 {
-	cli_cmd->api->printf_cb("Command list[%d]:\r\n", cli_cmd->cmd_num);
+#if CLI_MCD_EN_LIST > 0
+	cli_cmd->api->printf_cb("Command list[%d]:\r\n", cli_cmd->list_num);
 	cli_cmd->api->printf_cb("==============================\r\n");
 
-	cli_cmd_entry_t *target = cli_cmd->list_head;
+	cli_cmd_list_t *target = cli_cmd->list_head;
 	while (target) {
-      //cli_cmd->api->printf_cb("  [%12s] %s\r\n", target->command, target->describe);  /* 左对齐，12位长度，不够补空格 */
-		cli_cmd->api->printf_cb("  [%-12s] %s\r\n", target->command, target->describe); /* 右对齐，12位长度，不够补空格 */
+      //cli_cmd->api->printf_cb("  [%12s] %s\r\n", target->command, target->describe);
+		cli_cmd->api->printf_cb("  [%-12s] %s\r\n", target->command, target->describe);
 
 		target = target->next;
 	}
+#else
+	cli_cmd->api->printf_cb("Command list[%d]:\r\n", cli_cmd->entry_num);
+	cli_cmd->api->printf_cb("==============================\r\n");
+
+    for (int16_t i = 0; i < cli_cmd->entry_num; i++) {
+		cli_cmd->api->printf_cb("  [%-12s] %s\r\n", cli_cmd->entry[i]->command, cli_cmd->entry[i]->describe);
+    }
+#endif
 }
 
-cli_cmd_t *CliCmdCreate(const cli_api_t *api, int16_t cmd_max)
+cli_cmd_t *CliCmdCreate(const cli_api_t *api)
 {
     if (!api || !api->malloc_cb || !api->free_cb || !api->printf_cb)
     {
@@ -79,7 +105,6 @@ cli_cmd_t *CliCmdCreate(const cli_api_t *api, int16_t cmd_max)
 
     memset(cli_cmd, 0, sizeof(cli_cmd_t));
     cli_cmd->api = api;
-    cli_cmd->cmd_max = cmd_max;
 
     return cli_cmd;
 }
@@ -90,18 +115,24 @@ void CliCmdDestroy(cli_cmd_t *cli_cmd)
         return;
     }
 
-    cli_cmd_entry_t *target = cli_cmd->list_head;
+#if CLI_MCD_EN_LIST > 0
+    cli_cmd_list_t *target = cli_cmd->list_head;
 
 	while (target) {
-        cli_cmd_entry_t *temp = target;
+        cli_cmd_list_t *temp = target;
 		target = target->next;
 		cli_cmd->api->free_cb(temp);
 	}
+#else
+    if (cli_cmd->entry) {
+        cli_cmd->api->free_cb(cli_cmd->entry);
+    }
+#endif
 
     memset(cli_cmd, 0, sizeof(cli_cmd_t));
     cli_cmd->api->free_cb(cli_cmd);
 }
-
+#if CLI_MCD_EN_LIST > 0
 int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
                        char *cmd,
                        void (*function)(int, char **),
@@ -111,7 +142,7 @@ int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
         return RET_ERROR;
     }
 
-    cli_cmd_entry_t *target = cli_cmd->list_head;
+    cli_cmd_list_t *target = cli_cmd->list_head;
 
 	while (target) {
         if (!strcmp(cmd, target->command)) {
@@ -122,11 +153,7 @@ int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
 		target = target->next;
 	}
 
-    if (cli_cmd->cmd_num >= cli_cmd->cmd_max) {
-        return RET_ERROR;
-    }
-
-    cli_cmd_entry_t *node = (cli_cmd_entry_t *)cli_cmd->api->malloc_cb(sizeof(cli_cmd_entry_t));
+    cli_cmd_list_t *node = (cli_cmd_list_t *)cli_cmd->api->malloc_cb(sizeof(cli_cmd_list_t));
     if (node == NULL) {
         return RET_ERROR;
     }
@@ -139,40 +166,80 @@ int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
     if (!cli_cmd->list_head) {
         cli_cmd->list_head = node;
     } else {
-        cli_cmd_entry_t *tail = cli_cmd->list_head;
+        cli_cmd_list_t *tail = cli_cmd->list_head;
     	while (tail->next) {
     		tail = tail->next;
     	}
         tail->next = node;
     }
 
-    cli_cmd->cmd_num++;
+    cli_cmd->list_num++;
 
     return RET_OK;
 }
+#else
+int32_t CliCmdTableRegister(cli_cmd_t *cli_cmd, const cli_cmd_entry_t *entry, int16_t num)
+{
+    int16_t num_max = cli_cmd->entry_num + num;
+
+    if (num_max > cli_cmd->entry_size) {
+        cli_cmd_entry_t **temp;
+        temp = (cli_cmd_entry_t **)cli_cmd->api->malloc_cb(num_max * sizeof(cli_cmd_entry_t *));
+        if (!temp) {
+            return RET_ERROR;
+        }
+
+        if (cli_cmd->entry) {
+            memcpy(temp, cli_cmd->entry, cli_cmd->entry_num * sizeof(cli_cmd_entry_t *));
+            cli_cmd->api->free_cb(cli_cmd->entry);
+        }
+
+        cli_cmd->entry = temp;
+    }
+
+    for (int16_t i = 0; i < num; i++, cli_cmd->entry_num++) {
+        cli_cmd->entry[cli_cmd->entry_num] = (cli_cmd_entry_t *)&entry[i];
+    }
+
+    return RET_OK;
+}
+#endif
 
 int32_t CliCmdUnregister(cli_cmd_t *cli_cmd, char *cmd)
 {
     if (!cli_cmd || !cmd) {
         return RET_ERROR;
     }
+    int32_t ret = RET_ERROR;
 
-	cli_cmd_entry_t **curr;
+#if CLI_MCD_EN_LIST > 0
+	cli_cmd_list_t **curr;
 
 	for (curr = &cli_cmd->list_head; *curr; ) {
-		cli_cmd_entry_t *entry = *curr;
+		cli_cmd_list_t *entry = *curr;
 
 		if (!strcmp(cmd, entry->command)) {
 			*curr = entry->next;
 			cli_cmd->api->free_cb(entry);
-            cli_cmd->cmd_num--;
-            return RET_OK;
+            cli_cmd->list_num--;
+            ret = RET_OK;
+            break;
 		} else {
 			curr = &entry->next;
         }
 	}
+#else
+    for (int16_t i = 0; i < cli_cmd->entry_num; i++) {
+		if (!strcmp(cmd, cli_cmd->entry[i]->command)) {
+            memmove(&cli_cmd->entry[i], &cli_cmd->entry[i+1], cli_cmd->entry_num - i - 1);
+            cli_cmd->entry_num--;
+            ret = RET_OK;
+            break;
+		}
+    }
+#endif
 
-    return RET_ERROR;
+    return ret;
 }
 
 void CliCmdHandle(cli_cmd_t *cli_cmd, char *cmdline)
@@ -191,8 +258,8 @@ void CliCmdHandle(cli_cmd_t *cli_cmd, char *cmdline)
             dumpHelpInfo(cli_cmd);
             return;
         }
-
-    	cli_cmd_entry_t *target = cli_cmd->list_head;
+#if CLI_MCD_EN_LIST > 0
+    	cli_cmd_list_t *target = cli_cmd->list_head;
     	while (target) {
             if (strcmp(argv[0], target->command) == 0) {
                 target->function(argc, argv);
@@ -200,6 +267,14 @@ void CliCmdHandle(cli_cmd_t *cli_cmd, char *cmdline)
             }
     		target = target->next;
     	}
+#else
+        for (int16_t i = 0; i < cli_cmd->entry_num; i++) {
+    		if (!strcmp(argv[0], cli_cmd->entry[i]->command)) {
+                cli_cmd->entry[i]->function(argc, argv);
+                return;
+    		}
+        }
+#endif
 
         cli_cmd->api->printf_cb("Unknown command:%s\r\n", argv[0]);
     } else {

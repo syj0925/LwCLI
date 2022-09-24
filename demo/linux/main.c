@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 
-
 #include <unistd.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -126,22 +125,32 @@ void CliCmdInit(void)
     };
 
     cli_shell_cfg_t cfg = {
-        .queue_size = 128,
+        .line_queue_size = 128,
         .line_buf_size = 256,
-        .history_max = 10,
-        .cmd_max = 50,
-        .username = "syj0925",
-        .password = "12345678",
-        .prompt = "ffo>",
+        .line_history_num = 10,
+        .username = "admin",
+        .password = "admin",
+        .prompt = "Hello> ",
     };
 
     CliShellInit(&api, &cfg);
-
+#if CLI_MCD_EN_LIST > 0
     CliShellRegister("reboot",    cmdReboot,    "reboot system");
     CliShellRegister("reset",     cmdReset,     "clear user data and reboot");
     CliShellRegister("factory",   cmdFactory,   "factory reset and reboot");
-    CliShellRegister("exit",      cmdExit,      "exit the app");   /* 结束本应用，适用linux平台 */
-    CliShellRegister("ver",       cmdVersion,   "query version");  /* 读版本 */
+    CliShellRegister("exit",      cmdExit,      "exit the app");
+    CliShellRegister("ver",       cmdVersion,   "query version");
+#else
+    static const cli_cmd_entry_t c_cmd_table[] = {
+        {"reboot",    cmdReboot,    "reboot system"},
+        {"reset",     cmdReset,     "clear user data and reboot"},
+        {"factory",   cmdFactory,   "factory reset and reboot"},
+        {"exit",      cmdExit,      "exit the app"},
+        {"ver",       cmdVersion,   "query version"},
+    };
+
+    CliShellTableRegister(c_cmd_table, sizeof(c_cmd_table)/sizeof(cli_cmd_entry_t));
+#endif
 }
 
 int main(int argc, char **argv)
