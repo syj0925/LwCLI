@@ -125,12 +125,12 @@ void CliCmdInit(void)
     };
 
     cli_shell_cfg_t cfg = {
-        .line_queue_size = 128,
-        .line_buf_size = 256,
+        .line_queue_size  = 128,
+        .line_buf_size    = 256,
         .line_history_num = 10,
         .username = "admin",
         .password = "admin",
-        .prompt = "Hello> ",
+        .prompt   = "Hello> ",
     };
 
     CliShellInit(&api, &cfg);

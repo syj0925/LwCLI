@@ -231,7 +231,9 @@ int32_t CliCmdUnregister(cli_cmd_t *cli_cmd, char *cmd)
 #else
     for (int16_t i = 0; i < cli_cmd->entry_num; i++) {
 		if (!strcmp(cmd, cli_cmd->entry[i]->command)) {
-            memmove(&cli_cmd->entry[i], &cli_cmd->entry[i+1], cli_cmd->entry_num - i - 1);
+            memmove(&cli_cmd->entry[i], &cli_cmd->entry[i+1],
+                    (cli_cmd->entry_num - i - 1)*sizeof(cli_cmd_entry_t *));
+
             cli_cmd->entry_num--;
             ret = RET_OK;
             break;
