@@ -180,22 +180,24 @@ int32_t CliCmdRegister(cli_cmd_t *cli_cmd,
 #else
 int32_t CliCmdTableRegister(cli_cmd_t *cli_cmd, const cli_cmd_entry_t *entry, int16_t num)
 {
-    int16_t num_max = cli_cmd->entry_num + num;
-
-    if (num_max > cli_cmd->entry_size) {
-        cli_cmd_entry_t **temp;
-        temp = (cli_cmd_entry_t **)cli_cmd->api->malloc_cb(num_max * sizeof(cli_cmd_entry_t *));
-        if (!temp) {
-            return RET_ERROR;
-        }
-
-        if (cli_cmd->entry) {
-            memcpy(temp, cli_cmd->entry, cli_cmd->entry_num * sizeof(cli_cmd_entry_t *));
-            cli_cmd->api->free_cb(cli_cmd->entry);
-        }
-
-        cli_cmd->entry = temp;
+    if (!cli_cmd || !entry || num <= 0) {
+        return RET_ERROR;
     }
+
+    int16_t num_max = cli_cmd->entry_num + num;
+    cli_cmd_entry_t **temp;
+
+    temp = (cli_cmd_entry_t **)cli_cmd->api->malloc_cb(num_max * sizeof(cli_cmd_entry_t *));
+    if (!temp) {
+        return RET_ERROR;
+    }
+
+    if (cli_cmd->entry) {
+        memcpy(temp, cli_cmd->entry, cli_cmd->entry_num * sizeof(cli_cmd_entry_t *));
+        cli_cmd->api->free_cb(cli_cmd->entry);
+    }
+
+    cli_cmd->entry = temp;
 
     for (int16_t i = 0; i < num; i++, cli_cmd->entry_num++) {
         cli_cmd->entry[cli_cmd->entry_num] = (cli_cmd_entry_t *)&entry[i];
@@ -207,10 +209,11 @@ int32_t CliCmdTableRegister(cli_cmd_t *cli_cmd, const cli_cmd_entry_t *entry, in
 
 int32_t CliCmdUnregister(cli_cmd_t *cli_cmd, char *cmd)
 {
+    int32_t ret = RET_ERROR;
+
     if (!cli_cmd || !cmd) {
         return RET_ERROR;
     }
-    int32_t ret = RET_ERROR;
 
 #if CLI_MCD_EN_LIST > 0
 	cli_cmd_list_t **curr;

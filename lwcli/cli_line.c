@@ -173,8 +173,7 @@ static void keyUpDownHandle(cli_line_t *line, uint8_t readbyte)
     history_t *history = GetContainerOf(line->history_index, history_t, node);
     line->api->printf_cb("%s", history->data);
 
-    strncpy(line->line_buf, history->data, line->cfg.line_buf_size);
-    line->line_buf[line->cfg.line_buf_size - 1] = '\0';
+    strcpy(line->line_buf, history->data);
     line->line_end = strlen(line->line_buf);
     line->line_cursor = line->line_end;
 }
@@ -201,7 +200,7 @@ static void keyRightLeftHandle(cli_line_t *line, uint8_t readbyte)
 static void saveHistory(cli_line_t *line)
 {
     line->history_index = NULL;
-   if ((line->echo_opt == ECHO_DISABLE) || (line->line_end <= 0)) {
+    if (line->echo_opt == ECHO_DISABLE) {
         return;
     }
 
@@ -232,9 +231,7 @@ static void saveHistory(cli_line_t *line)
         return;
     }
 
-    strncpy(history->data, line->line_buf, line->line_end + 1);
-    line->line_buf[line->line_end] = '\0';
-
+    strcpy(history->data, line->line_buf);
     DlistAdd(&history->node, &line->history_list);
 }
 
@@ -242,12 +239,13 @@ static void keyEnterHandle(cli_line_t *line, uint8_t readbyte)
 {
     line->api->printf_cb(STR_ENTER);
 
-    /* save history command */
-    saveHistory(line);
+    if (line->line_end > 0) {
+        /* save history command */
+        line->line_buf[line->line_end] = '\0';
+        saveHistory(line);
+        line->cfg.handle_cb(line->cfg.ctx, line->line_buf);
+    }
 
-    line->cfg.handle_cb(line->cfg.ctx, line->line_buf);
-
-    memset(line->line_buf, '\0', line->cfg.line_buf_size);
     line->line_end = 0;
     line->line_cursor = 0;
     line->api->printf_cb("%s", line->prompt);
@@ -265,9 +263,9 @@ static void keyBackspaceHandle(cli_line_t *line, uint8_t readbyte)
             memmove(&line->line_buf[line->line_cursor],
                     &line->line_buf[line->line_cursor + 1],
                     line->line_end - line->line_cursor);
-            line->line_buf[line->line_end] = '\0';
 
             if (line->echo_opt == ECHO_ENABLE) {
+                line->line_buf[line->line_end] = '\0';
                 line->api->printf_cb("\b%s  \b", &line->line_buf[line->line_cursor]);
                 /* Move the cursor to the origin position */
                 for (int32_t i = line->line_cursor; i <= line->line_end; i++) {
@@ -278,7 +276,6 @@ static void keyBackspaceHandle(cli_line_t *line, uint8_t readbyte)
             if (line->echo_opt == ECHO_ENABLE) {
                 line->api->printf_cb(STR_BACKSPACE);
             }
-            line->line_buf[line->line_end] = '\0';
         }
     }
 }
@@ -294,6 +291,7 @@ static void keyNormalCharacterHandle(cli_line_t *line, uint8_t readbyte)
             line->line_buf[line->line_cursor] = readbyte;
 
             if (line->echo_opt == ECHO_ENABLE) {
+                line->line_buf[line->line_end + 1] = '\0';
                 line->api->printf_cb("%s", &line->line_buf[line->line_cursor]);
                 /* Move the cursor to new position */
                 for (int32_t i = line->line_cursor; i < line->line_end; i++) {
@@ -359,8 +357,7 @@ static void lineParse(cli_line_t *line, uint8_t readbyte)
 
         if (line->line_end < (line->cfg.line_buf_size - 1)) {
             keyNormalCharacterHandle(line, readbyte);
-        }  else if (line->line_end == (line->cfg.line_buf_size - 1)) {
-            line->line_buf[line->line_end] = '\0';
+        }  else {
             line->api->printf_cb("%s", STR_ENTER"Size limit exceeded!");
         }
     }
@@ -438,7 +435,7 @@ void CliLineInputChar(cli_line_t *line, uint8_t data)
 
 void CliLineInputBlock(cli_line_t *line, uint8_t *pdata, uint32_t datalen)
 {
-    if (line == NULL) {
+    if (line == NULL || pdata == NULL) {
         return;
     }
 

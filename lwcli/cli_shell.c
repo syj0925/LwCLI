@@ -1,3 +1,4 @@
+
 /**
  * @brief cli shell module
  * @file cli_shell.c
@@ -45,7 +46,7 @@ typedef struct cli_shell {
     const char *prompt;
 } cli_shell_t;
 
-static cli_shell_t s_shell;
+static cli_shell_t s_shell = {0};
 
 /*----------------------------------------------*
  * routines' implementations                    *
@@ -55,10 +56,6 @@ static void cmdHandle(void *ctx, char *line)
 {
     switch (s_shell.login) {
     case LOGIN_USERNAME:
-        if (strlen(line) <= 0) {
-            break;
-        }
-
         s_shell.temp_user = (char *)s_shell.api->malloc_cb(strlen(line) + 1);
         if (!s_shell.temp_user) {
             break;
@@ -88,12 +85,9 @@ static void cmdHandle(void *ctx, char *line)
         break;
 
     case LOGIN_SUCCESS:
-        if (strlen(line) <= 0) {
-            break;
-        }
-
         CliCmdHandle(s_shell.obj_cmd, line);
         break;
+
     default:
         break;
     }
@@ -108,6 +102,10 @@ static void cmdLogout(int argc, char **argv)
 
 int32_t CliShellInit(const cli_api_t *api, cli_shell_cfg_t *cfg)
 {
+    if (s_shell.api) {
+        return RET_ERROR;
+    }
+
     if (!api || !api->malloc_cb || !api->free_cb ||
         !api->printf_cb || !cfg) {
         return RET_ERROR;
