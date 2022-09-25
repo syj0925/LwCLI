@@ -282,33 +282,33 @@ static void keyBackspaceHandle(cli_line_t *line, uint8_t readbyte)
 
 static void keyNormalCharacterHandle(cli_line_t *line, uint8_t readbyte)
 {
-        if (line->line_cursor < line->line_end) {
+    if (line->line_cursor < line->line_end) {
 
-            memmove(&line->line_buf[line->line_cursor + 1],
-                    &line->line_buf[line->line_cursor],
-                    line->line_end - line->line_cursor);
+        memmove(&line->line_buf[line->line_cursor + 1],
+                &line->line_buf[line->line_cursor],
+                line->line_end - line->line_cursor);
 
-            line->line_buf[line->line_cursor] = readbyte;
+        line->line_buf[line->line_cursor] = readbyte;
 
-            if (line->echo_opt == ECHO_ENABLE) {
-                line->line_buf[line->line_end + 1] = '\0';
-                line->api->printf_cb("%s", &line->line_buf[line->line_cursor]);
-                /* Move the cursor to new position */
-                for (int32_t i = line->line_cursor; i < line->line_end; i++) {
-                    line->api->printf_cb("\b");
-                }
+        if (line->echo_opt == ECHO_ENABLE) {
+            line->line_buf[line->line_end + 1] = '\0';
+            line->api->printf_cb("%s", &line->line_buf[line->line_cursor]);
+            /* Move the cursor to new position */
+            for (int32_t i = line->line_cursor; i < line->line_end; i++) {
+                line->api->printf_cb("\b");
             }
-
-        } else {
-            if (line->echo_opt == ECHO_ENABLE) {
-                line->api->printf_cb("%c", readbyte);
-            }
-
-            line->line_buf[line->line_end] = readbyte;
         }
 
-        line->line_end++;
-        line->line_cursor++;
+    } else {
+        if (line->echo_opt == ECHO_ENABLE) {
+            line->api->printf_cb("%c", readbyte);
+        }
+
+        line->line_buf[line->line_end] = readbyte;
+    }
+
+    line->line_end++;
+    line->line_cursor++;
 }
 
 static void lineParse(cli_line_t *line, uint8_t readbyte)
