@@ -23,7 +23,7 @@
 #define STR_BACKSPACE   "\b \b"
 #define STR_ENTER       "\r\n"
 
-enum KEY_ACTION {
+enum key_action {
     KEY_NULL = 0,	    /* NULL */
     KEY_TAB = 9,        /* Tab */
     KEY_NEWLINE = 10,   /* NewLine '\n' */
